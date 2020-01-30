@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import wandb
 
 def initialize_GPU(args):
     # Initialize GPUs
@@ -113,6 +114,12 @@ def calculate_eer(y, y_score):
     fpr, tpr, thresholds = roc_curve(y, y_score, pos_label=1)
     eer = brentq(lambda x : 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
     thresh = interp1d(fpr, thresholds)(eer)
+
+    try:
+        wandb.log({ 'eer': eer })
+    except ValueError:
+        pass
+
     return eer, thresh
 
 

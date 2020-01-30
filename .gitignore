@@ -1,0 +1,7 @@
+log/
+src/wandb/
+
+#################### Python ####################
+# Byte-compiled / optimized / DLL files
+*/__pycache__/
+*.pyc

@@ -4,6 +4,11 @@ import os
 import sys
 import keras
 import numpy as np
+import wandb
+from wandb.keras import WandbCallback
+
+WANDB_PROJECT_NAME = 'zhaw_deep_voice'
+WANDB_GROUP = 'VGG_WeidiXie'
 
 sys.path.append('../tool')
 import toolkits
@@ -22,7 +27,7 @@ parser.add_argument('--multiprocess', default=12, type=int)
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
-parser.add_argument('--vlad_cluster', default=10, type=int)
+parser.add_argument('--vlad_cluster', default=8, type=int)
 parser.add_argument('--bottleneck_dim', default=512, type=int)
 parser.add_argument('--aggregation_mode', default='gvlad', choices=['avg', 'vlad', 'gvlad'], type=str)
 # set up learning rate, training loss and optimizer.
@@ -37,7 +42,6 @@ global args
 args = parser.parse_args()
 
 def main():
-
     # gpu configuration
     toolkits.initialize_GPU(args)
 
@@ -68,6 +72,12 @@ def main():
     partition = {'train': trnlist.flatten(), 'val': vallist.flatten()}
     labels = {'train': trnlb.flatten(), 'val': vallb.flatten()}
 
+    # WandB
+    wandb.init(
+        project=WANDB_PROJECT_NAME,
+        group=WANDB_GROUP
+    )
+
     # Generators
     trn_gen = generator.DataGenerator(partition['train'], labels['train'], **params)
     network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
@@ -93,11 +103,12 @@ def main():
     normal_lr = keras.callbacks.LearningRateScheduler(step_decay)
     tbcallbacks = keras.callbacks.TensorBoard(log_dir=log_path, histogram_freq=0, write_graph=True, write_images=False,
                                               update_freq=args.batch_size * 16)
-    callbacks = [keras.callbacks.ModelCheckpoint(os.path.join(model_path, 'weights-{epoch:02d}-{acc:.3f}.h5'),
-                                                 monitor='loss',
-                                                 mode='min',
-                                                 save_best_only=True),
-                 normal_lr, tbcallbacks]
+    callbacks = [
+      keras.callbacks.ModelCheckpoint(os.path.join(model_path, 'weights-{epoch:02d}-{acc:.3f}.h5'), monitor='loss', mode='min', save_best_only=True),
+      normal_lr,
+      tbcallbacks,
+      WandbCallback(save_model=False)
+    ]
 
     if args.ohem_level > 1:     # online hard negative mining will be used
         candidate_steps = int(len(partition['train']) // args.batch_size)
