@@ -6,7 +6,7 @@ import numpy as np
 #       code from Arsha for loading data.
 # ===============================================
 def load_wav(vid_path, sr, mode='train'):
-    wav, sr_ret = librosa.load(vid_path, sr=sr)
+    wav, sr_ret = librosa.core.load(vid_path, sr=sr)
     assert sr_ret == sr
     if mode == 'train':
         extended_wav = np.append(wav, wav)
@@ -38,5 +38,3 @@ def load_data(path, win_length=400, sr=16000, hop_length=160, n_fft=512, spec_le
     mu = np.mean(spec_mag, 0, keepdims=True)
     std = np.std(spec_mag, 0, keepdims=True)
     return (spec_mag - mu) / (std + 1e-5)
-
-

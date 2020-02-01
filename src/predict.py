@@ -3,10 +3,15 @@ from __future__ import print_function
 import os
 import sys
 import numpy as np
+import h5py
+from tqdm import tqdm
 
 sys.path.append('../tool')
 import toolkits
 import utils as ut
+
+import logging
+logging.getLogger('tensorflow').disabled = True
 
 import pdb
 # ===========================================
@@ -18,7 +23,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', default='', type=str)
 parser.add_argument('--resume', default='', type=str)
 parser.add_argument('--batch_size', default=16, type=int)
-parser.add_argument('--data_path', default='/media/weidi/2TB-2/datasets/voxceleb1/wav', type=str)
+parser.add_argument('--data_path', default='/mnt/all1/voxceleb1/all', type=str)
+# parser.add_argument('--data_path', default='/cluster/data/lehmacl1/datasets/raw/vox1', type=str)
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
@@ -92,42 +98,115 @@ def main():
 
     print('==> start testing.')
 
-    # The feature extraction process has to be done sample-by-sample,
-    # because each sample is of different lengths.
-    total_length = len(unique_list)
-    feats, scores, labels = [], [], []
-    for c, ID in enumerate(unique_list):
-        if c % 50 == 0: print('Finish extracting features for {}/{}th wav.'.format(c, total_length))
-        specs = ut.load_data(ID, win_length=params['win_length'], sr=params['sampling_rate'],
-                             hop_length=params['hop_length'], n_fft=params['nfft'],
-                             spec_len=params['spec_len'], mode='eval')
-        specs = np.expand_dims(np.expand_dims(specs, 0), -1)
+    def get_eval_lists():
+        # return {
+        #     'vox1-cleaned':          '../meta/voxceleb1_veri_test_fixed.txt'
+        # }
+
+        return {
+            'vox1':                  '../meta/voxceleb1_veri_test.txt',
+            'vox1-cleaned':          '../meta/voxceleb1_veri_test_fixed.txt',
+            'vox1-E':                '../meta/voxceleb1_veri_test_extended.txt',
+            'vox1-E-cleaned':        '../meta/voxceleb1_veri_test_extended_fixed.txt',
+            'vox1-H':                '../meta/voxceleb1_veri_test_hard.txt',
+            'vox1-H-cleaned':        '../meta/voxceleb1_veri_test_hard_fixed.txt'
+        }
+
+    def unique_utterances():
+        utterances = set()
+        eval_lists = get_eval_lists()
+
+        for key in eval_lists.keys():
+            for line in open(eval_lists[key], 'r'):
+                label, file1, file2 = line[:-1].split(' ')
+
+                utterances.add(file1)
+                utterances.add(file2)
+
+        return utterances
+
+    def extract_embeddings_for_eval_lists(sliding_window_shift=params['spec_len']//2, identifier=''):
+        for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, ncols=100, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
+            spectrogram_labels = list()
+
+            specs = ut.load_data(args.data_path + '/' + utterance, win_length=params['win_length'], sr=params['sampling_rate'],
+                                 hop_length=params['hop_length'], n_fft=params['nfft'],
+                                 spec_len=params['spec_len'], mode='eval')
+
+            # import code; code.interact(local=dict(globals(), **locals()))
+
+            if specs.shape[1] < params['spec_len'] + 4 * sliding_window_shift:
+                num_repeats = ((params['spec_len'] + 4 * sliding_window_shift) // specs.shape[1]) + 1
+                specs = np.tile(spect, (1, num_repeats))
+
+            offset = 0
+            sample_spects = list()
+
+            while offset < specs.shape[1] - params['spec_len']:
+                sample_spects.append(specs[:, offset:offset + params['spec_len']])
+                spectrogram_labels.append(utterance)
+                offset += sliding_window_shift
+
+            specs = np.expand_dims(np.asarray(sample_spects), -1)
+            embeddings = network_eval.predict(specs)
+
+            spectrogram_labels = np.string_(spectrogram_labels)
+
+            with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
+                if 'labels' not in f.keys():
+                    f.create_dataset('labels', data=spectrogram_labels, maxshape=(None,), dtype=h5py.string_dtype(encoding='utf-8'))
+                else:
+                    f['labels'].resize((f['labels'].shape[0] + spectrogram_labels.shape[0]), axis=0)
+                    f['labels'][-spectrogram_labels.shape[0]:] = spectrogram_labels
+
+                if 'embeddings' not in f.keys():
+                    f.create_dataset('embeddings', data=embeddings, maxshape=(None, embeddings.shape[1]))
+                else:
+                    f['embeddings'].resize((f['embeddings'].shape[0] + embeddings.shape[0]), axis=0)
+                    f['embeddings'][-embeddings.shape[0]:] = embeddings
+
+    extract_embeddings_for_eval_lists(params['spec_len'] // 2, '50_percent_shift')
+    extract_embeddings_for_eval_lists(3 * (params['spec_len'] // 4), '75_percent_shift')
+    extract_embeddings_for_eval_lists(params['spec_len'] // 4, '25_percent_shift')
+
+    sys.exit()
+
+    # # The feature extraction process has to be done sample-by-sample,
+    # # because each sample is of different lengths.
+    # total_length = len(unique_list)
+    # feats, scores, labels = [], [], []
+    # for c, ID in enumerate(unique_list):
+    #     if c % 50 == 0: print('Finish extracting features for {}/{}th wav.'.format(c, total_length))
+    #     specs = ut.load_data(ID, win_length=params['win_length'], sr=params['sampling_rate'],
+    #                          hop_length=params['hop_length'], n_fft=params['nfft'],
+    #                          spec_len=params['spec_len'], mode='eval')
+    #     specs = np.expand_dims(np.expand_dims(specs, 0), -1)
     
-        v = network_eval.predict(specs)
-        feats += [v]
+    #     v = network_eval.predict(specs)
+    #     feats += [v]
     
-    feats = np.array(feats)
+    # feats = np.array(feats)
 
-    # ==> compute the pair-wise similarity.
-    for c, (p1, p2) in enumerate(zip(list1, list2)):
-        ind1 = np.where(unique_list == p1)[0][0]
-        ind2 = np.where(unique_list == p2)[0][0]
+    # # ==> compute the pair-wise similarity.
+    # for c, (p1, p2) in enumerate(zip(list1, list2)):
+    #     ind1 = np.where(unique_list == p1)[0][0]
+    #     ind2 = np.where(unique_list == p2)[0][0]
 
-        v1 = feats[ind1, 0]
-        v2 = feats[ind2, 0]
+    #     v1 = feats[ind1, 0]
+    #     v2 = feats[ind2, 0]
 
-        scores += [np.sum(v1*v2)]
-        labels += [verify_lb[c]]
-        print('scores : {}, gt : {}'.format(scores[-1], verify_lb[c]))
+    #     scores += [np.sum(v1*v2)]
+    #     labels += [verify_lb[c]]
+    #     print('scores : {}, gt : {}'.format(scores[-1], verify_lb[c]))
 
-    scores = np.array(scores)
-    labels = np.array(labels)
+    # scores = np.array(scores)
+    # labels = np.array(labels)
 
-    np.save(os.path.join(result_path, 'prediction_scores.npy'), scores)
-    np.save(os.path.join(result_path, 'groundtruth_labels.npy'), labels)
+    # np.save(os.path.join(result_path, 'prediction_scores.npy'), scores)
+    # np.save(os.path.join(result_path, 'groundtruth_labels.npy'), labels)
 
-    eer, thresh = toolkits.calculate_eer(labels, scores)
-    print('==> model : {}, EER: {}'.format(args.resume, eer))
+    # eer, thresh = toolkits.calculate_eer(labels, scores)
+    # print('==> model : {}, EER: {}'.format(args.resume, eer))
 
 
 def set_result_path(args):
