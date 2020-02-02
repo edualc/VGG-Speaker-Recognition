@@ -34,6 +34,7 @@ parser.add_argument('--aggregation_mode', default='gvlad', choices=['avg', 'vlad
 # set up learning rate, training loss and optimizer.
 parser.add_argument('--loss', default='softmax', choices=['softmax', 'amsoftmax'], type=str)
 parser.add_argument('--test_type', default='normal', choices=['normal', 'hard', 'extend'], type=str)
+parser.add_argument('--overlap', default='', type=str)
 
 global args
 args = parser.parse_args()
@@ -126,7 +127,7 @@ def main():
         return utterances
 
     def extract_embeddings_for_eval_lists(sliding_window_shift=params['spec_len']//2, identifier=''):
-        for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, ncols=100, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
+        for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
             spectrogram_labels = list()
 
             specs = ut.load_data(args.data_path + '/' + utterance, win_length=params['win_length'], sr=params['sampling_rate'],
@@ -165,9 +166,14 @@ def main():
                     f['embeddings'].resize((f['embeddings'].shape[0] + embeddings.shape[0]), axis=0)
                     f['embeddings'][-embeddings.shape[0]:] = embeddings
 
-    extract_embeddings_for_eval_lists(params['spec_len'] // 2, '50_percent_shift')
-    extract_embeddings_for_eval_lists(3 * (params['spec_len'] // 4), '75_percent_shift')
-    extract_embeddings_for_eval_lists(params['spec_len'] // 4, '25_percent_shift')
+    if args.overlap == '50_percent_shift':
+        extract_embeddings_for_eval_lists(params['spec_len'] // 2, '50_percent_shift')
+    
+    if args.overlap == '75_percent_shift':
+        extract_embeddings_for_eval_lists(3 * (params['spec_len'] // 4), '75_percent_shift')
+    
+    if args.overlap == '25_percent_shift':
+        extract_embeddings_for_eval_lists(params['spec_len'] // 4, '25_percent_shift')
 
     sys.exit()
 
