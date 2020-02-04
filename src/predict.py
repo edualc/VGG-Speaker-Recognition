@@ -132,7 +132,7 @@ def main():
             for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
                 # Already extracted this utterance
                 if utterance in f['labels'][:]:
-                    break
+                    continue
 
                 spectrogram_labels = list()
 
