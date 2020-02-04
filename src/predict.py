@@ -142,10 +142,6 @@ def main():
 
         with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
             for idx, utterance in enumerate(tqdm(unique_utterances_to_extract, ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
-                # Already extracted this utterance
-                if utterance in already_extracted_labels:
-                    continue
-
                 spectrogram_labels = list()
 
                 specs = ut.load_data(args.data_path + '/' + utterance, win_length=params['win_length'], sr=params['sampling_rate'],
