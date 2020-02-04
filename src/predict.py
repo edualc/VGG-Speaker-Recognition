@@ -129,9 +129,12 @@ def main():
 
     def extract_embeddings_for_eval_lists(sliding_window_shift=params['spec_len']//2, identifier=''):
         with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
+            already_extracted_labels = f['labels'][:]
+
+        with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
             for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
                 # Already extracted this utterance
-                if utterance in f['labels'][:]:
+                if utterance in already_extracted_labels:
                     continue
 
                 spectrogram_labels = list()
