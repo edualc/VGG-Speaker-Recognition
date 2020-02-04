@@ -119,7 +119,8 @@ def main():
 
         for key in eval_lists.keys():
             for line in open(eval_lists[key], 'r'):
-                label, file1, file2 = line[:-1].split(' ')
+                label, file1, file2 = line.rstrip().split(' ')
+
 
                 utterances.add(file1)
                 utterances.add(file2)
@@ -127,33 +128,38 @@ def main():
         return utterances
 
     def extract_embeddings_for_eval_lists(sliding_window_shift=params['spec_len']//2, identifier=''):
-        for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
-            spectrogram_labels = list()
+        with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
+            for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
+                # Already extracted this utterance
+                if utterance in f['labels'][:]:
+                    break
 
-            specs = ut.load_data(args.data_path + '/' + utterance, win_length=params['win_length'], sr=params['sampling_rate'],
-                                 hop_length=params['hop_length'], n_fft=params['nfft'],
-                                 spec_len=params['spec_len'], mode='eval')
+                spectrogram_labels = list()
 
-            # import code; code.interact(local=dict(globals(), **locals()))
+                specs = ut.load_data(args.data_path + '/' + utterance, win_length=params['win_length'], sr=params['sampling_rate'],
+                                     hop_length=params['hop_length'], n_fft=params['nfft'],
+                                     spec_len=params['spec_len'], mode='eval')
 
-            if specs.shape[1] < params['spec_len'] + 4 * sliding_window_shift:
-                num_repeats = ((params['spec_len'] + 4 * sliding_window_shift) // specs.shape[1]) + 1
-                specs = np.tile(spect, (1, num_repeats))
+                # import code; code.interact(local=dict(globals(), **locals()))
 
-            offset = 0
-            sample_spects = list()
+                if specs.shape[1] < params['spec_len'] + 4 * sliding_window_shift:
+                    num_repeats = ((params['spec_len'] + 4 * sliding_window_shift) // specs.shape[1]) + 1
+                    specs = np.tile(spect, (1, num_repeats))
 
-            while offset < specs.shape[1] - params['spec_len']:
-                sample_spects.append(specs[:, offset:offset + params['spec_len']])
-                spectrogram_labels.append(utterance)
-                offset += sliding_window_shift
+                offset = 0
+                sample_spects = list()
 
-            specs = np.expand_dims(np.asarray(sample_spects), -1)
-            embeddings = network_eval.predict(specs)
+                while offset < specs.shape[1] - params['spec_len']:
+                    sample_spects.append(specs[:, offset:offset + params['spec_len']])
+                    spectrogram_labels.append(utterance)
+                    offset += sliding_window_shift
 
-            spectrogram_labels = np.string_(spectrogram_labels)
+                specs = np.expand_dims(np.asarray(sample_spects), -1)
+                embeddings = network_eval.predict(specs)
 
-            with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
+                spectrogram_labels = np.string_(spectrogram_labels)
+
+            
                 if 'labels' not in f.keys():
                     f.create_dataset('labels', data=spectrogram_labels, maxshape=(None,), dtype=h5py.string_dtype(encoding='utf-8'))
                 else:
