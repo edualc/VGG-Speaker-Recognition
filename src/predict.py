@@ -131,8 +131,17 @@ def main():
         with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
             already_extracted_labels = f['labels'][:]
 
+        # import code; code.interact(local=dict(globals(), **locals()))
+        unique_utterances_to_extract = np.array(list(unique_utterances()))
+        num_unique = unique_utterances_to_extract.shape[0]
+
+        unique_utterances_to_extract = np.setdiff1d(unique_utterances_to_extract, already_extracted_labels)
+
+        print("Already Extracted: {}/{} ({} remaining)".format(already_extracted_labels.shape[0], num_unique, unique_utterances_to_extract.shape[0]))
+
+
         with h5py.File('../result/vgg_embeddings_' + identifier + '.h5', 'a') as f:
-            for idx, utterance in enumerate(tqdm(list(unique_utterances()), ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
+            for idx, utterance in enumerate(tqdm(unique_utterances_to_extract, ascii=True, desc='preparing spectrogram windows for predictions with sliding window shift ' + identifier)):
                 # Already extracted this utterance
                 if utterance in already_extracted_labels:
                     continue
@@ -142,8 +151,6 @@ def main():
                 specs = ut.load_data(args.data_path + '/' + utterance, win_length=params['win_length'], sr=params['sampling_rate'],
                                      hop_length=params['hop_length'], n_fft=params['nfft'],
                                      spec_len=params['spec_len'], mode='eval')
-
-                # import code; code.interact(local=dict(globals(), **locals()))
 
                 if specs.shape[1] < params['spec_len'] + 4 * sliding_window_shift:
                     num_repeats = ((params['spec_len'] + 4 * sliding_window_shift) // specs.shape[1]) + 1
